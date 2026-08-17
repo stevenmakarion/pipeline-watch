@@ -1,5 +1,7 @@
 # pipeline-watch
 
+![](images/preview.png)
+
 A dead-man watchman for automation pipelines — the monitoring that catches the *quiet*
 failures, which are the expensive ones.
 
