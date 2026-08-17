@@ -1,0 +1,35 @@
+{
+  "_comment": "Example config. Copy to checks.json and point at real targets.",
+  "checks": [
+    {
+      "name": "client-api-health",
+      "type": "http",
+      "url": "https://example.com/health",
+      "expect_status": 200,
+      "expect_contains": "\"status\":\"ok\"",
+      "max_ms": 3000,
+      "confirm": 2
+    },
+    {
+      "name": "n8n-nightly-sync",
+      "type": "heartbeat",
+      "path": "~/pipelines/nightly-sync.beat",
+      "max_age_minutes": 90,
+      "confirm": 1
+    },
+    {
+      "name": "lead-ingest-log",
+      "type": "growth",
+      "path": "~/pipelines/leads.log",
+      "must_grow": true,
+      "confirm": 2
+    },
+    {
+      "name": "queue-depth",
+      "type": "command",
+      "command": "redis-cli LLEN jobs:pending",
+      "expect_contains": "0",
+      "confirm": 3
+    }
+  ]
+}
