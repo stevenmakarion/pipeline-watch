@@ -160,8 +160,14 @@ def run_once(cfg, state, quiet=False):
         c["_prev_size"] = st.get("size")
         try:
             ok, detail, ms = CHECKS[c["type"]](c)
-        except Exception as e:                    # FAIL OPEN: monitor bugs are
-            ok, detail, ms = True, f"monitor error (ignored): {e}", 0
+        except Exception as e:
+            # FAIL CLOSED. This used to return ok=True on any exception, with the
+            # comment "monitor bugs are not outages". That is backwards for a
+            # monitor: an exception means THE CHECK COULD NOT LOOK, and a tool whose
+            # answer to "I could not look" is "everything is fine" is worse than no
+            # tool, because it manufactures silence that reads as health. Could-not-
+            # look must never render as found-nothing.
+            ok, detail, ms = False, f"CHECK ERROR (cannot verify, treated as failure): {e}", 0
         if c["type"] == "growth" and os.path.exists(os.path.expanduser(c.get("path", ""))):
             st["size"] = os.path.getsize(os.path.expanduser(c["path"]))
 
@@ -173,14 +179,38 @@ def run_once(cfg, state, quiet=False):
         if not ok:
             fails += 1
 
-        # EDGE ALERTING with a flap guard: only page after N consecutive
-        # agreeing polls, and only when the state actually changed.
-        need = c.get("confirm", 2)
-        if now != prev and st["streak"] >= need and prev != "unknown":
+        # EDGE ALERTING with a flap guard.
+        #
+        # THE BUG THIS REPLACES (found 2026-09-09, measured, not theorised): the
+        # condition was `now != prev and st["streak"] >= need`. But the line above
+        # RESETS streak to 1 on every change, so at the exact moment `now != prev`
+        # is true, streak is always exactly 1. With the default confirm of 2, the
+        # test was `1 >= 2`. The two clauses were mutually exclusive and THIS MONITOR
+        # COULD NEVER PAGE. A replay of healthy -> repeated failures -> recovery
+        # produced zero alerts on the default and two with confirm=1.
+        #
+        # The fix separates OBSERVED state from CONFIRMED state. `status`/`streak`
+        # track what we just saw; `confirmed` is the debounced state we have actually
+        # reported. We page when an observation has held for `need` consecutive polls
+        # AND differs from what was last reported. A one-poll blip still never pages.
+        need = max(1, int(c.get("confirm", 2)))
+        confirmed = st.setdefault("confirmed", "unknown")
+        should_alert = False
+        if st["streak"] >= need and now != confirmed:
+            if confirmed == "unknown":
+                # First confirmed reading establishes the baseline. Announce it only
+                # if we are starting BROKEN, which is worth knowing and must not be
+                # swallowed as "just the baseline".
+                should_alert = (now == "fail")
+            else:
+                should_alert = True
+            st["confirmed"] = now
+        if should_alert:
             icon = "🔴" if now == "fail" else "🟢"
             alert(f"{icon} {name} is {now.upper()}\n"
                   f"check: {c['type']} · {c.get('url') or c.get('path') or ''}\n"
                   f"evidence: {detail}\n"
+                  f"confirmed over {st['streak']} consecutive polls (confirm={need})\n"
                   f"at {datetime.now():%F %H:%M:%S}")
         if not quiet:
             print(f"  {'OK  ' if ok else 'FAIL'} {name:24s} {detail}")
