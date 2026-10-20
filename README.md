@@ -78,3 +78,8 @@ this build; `alert()` is four lines to swap for Slack, PagerDuty, or SMS.
 No third-party dependencies. Python 3.9+.
 
 MIT licensed.
+
+---
+
+Part of the work at [stevenmakarion.com/work/](https://stevenmakarion.com/work/).
+Built by Steven Makarion and Aria Makarion, as a partnership.
